@@ -1,0 +1,127 @@
+Parameters:
+  Passwd:
+    Type: String
+    Default: wjdqhgurtlsxla1!
+
+Resources:
+  ##-- CloudWatchAgent Role
+
+  ##-- Admin group --##
+  AdminGroup:
+    Type: AWS::IAM::Group
+    Description: AWS Console Admin Group
+    Properties:
+      GroupName: Admin
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AdministratorAccess
+  ##-- Admin User --##
+  AdminUser01:
+    Type: AWS::IAM::User
+    Properties:
+      UserName: tmlee@gsitm.com
+      Groups:
+        - !Ref AdminGroup
+      LoginProfile:
+        Password: !Ref Passwd
+        PasswordResetRequired: yes
+
+  AdminUser02:
+    Type: AWS::IAM::User
+    Properties:
+      UserName: haeun9@gsitm.com
+      Groups:
+        - !Ref AdminGroup
+      LoginProfile:
+        Password: !Ref Passwd
+        PasswordResetRequired: yes
+
+  AdminUser03:
+    Type: AWS::IAM::User
+    Properties:
+      UserName: mhko@gsitm.com
+      Groups:
+        - !Ref AdminGroup
+      LoginProfile:
+        Password: !Ref Passwd
+        PasswordResetRequired: yes
+
+  ##-- Read Group --##
+  ReadGroup:
+    Type: AWS::IAM::Group
+    Description: AWS Console read only Group
+    Properties:
+      GroupName: Read
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/ReadOnlyAccess
+  ##-- Read User --##
+  User01:
+    Type: AWS::IAM::User
+    Properties:
+      UserName: ktm@hy.co.kr
+      Groups:
+        - !Ref ReadGroup
+      LoginProfile:
+        Password: !Ref Passwd
+        PasswordResetRequired: yes
+
+  User02:
+    Type: AWS::IAM::User
+    Properties:
+      UserName: jkpark@gsitm.com
+      Groups:
+        - !Ref ReadGroup
+      LoginProfile:
+        Password: !Ref Passwd
+        PasswordResetRequired: yes
+
+  User03:
+    Type: AWS::IAM::User
+    Properties:
+      UserName: srkim@gsitm.com
+      Groups:
+        - !Ref ReadGroup
+      LoginProfile:
+        Password: !Ref Passwd
+        PasswordResetRequired: yes
+
+  User04:
+    Type: AWS::IAM::User
+    Properties:
+      UserName: magick@gsitm.com
+      Groups:
+        - !Ref ReadGroup
+      LoginProfile:
+        Password: !Ref Passwd
+        PasswordResetRequired: yes
+
+  User05:
+    Type: AWS::IAM::User
+    Properties:
+      UserName: minuklee@hy.co.kr
+      Groups:
+        - !Ref ReadGroup
+      LoginProfile:
+        Password: !Ref Passwd
+        PasswordResetRequired: yes
+
+  User06:
+    Type: AWS::IAM::User
+    Properties:
+      UserName: eunju413@hy.co.kr
+      Groups:
+        - !Ref ReadGroup
+      LoginProfile:
+        Password: !Ref Passwd
+        PasswordResetRequired: yes
+
+  ##-- AccessKey --##
+  AccessKey01:
+    Type: "AWS::IAM::AccessKey"
+    Properties:
+      UserName: !Ref AdminUser02
+
+Outputs:
+  AccessKey01:
+    Value: !Ref AccessKey01
+  Admin01SecretKey:
+    Value: !GetAtt AccessKey01.SecretAccessKey

@@ -1,0 +1,1124 @@
+Description: hy fredit Compute Stack Templete
+
+## Labeling Parameters
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: "Instance Type"
+        Parameters:
+          - BastionInstanceType
+          - WebInstanceType
+          - WasInstanceType
+          - GitInstanceType
+          - RelayInstanceType
+          - ApiInstanceType
+      - Label:
+          default: "Private Ip"
+        Parameters:
+          - BastionPriIp
+          - Web01PriIp
+          - Was01PriIp
+          - Git01PriIp
+          - Relay01PriIp
+          - Api01PriIp
+
+Parameters:
+  ## Refer Stack && Enviroment Name
+
+  ReferStack:
+    Description: Refer Stack
+    Type: String
+    MinLength: 1
+    MaxLength: 255
+    AllowedPattern: "^[a-zA-Z][-a-zA-Z0-9]*$"
+    Default: hy-fredit-dev-network
+
+  EnvironmentName:
+    Description: An environment name (NameTag)
+    Type: String
+    Default: dev
+
+  ## EC2 Parameter -Keypair, AMI
+
+  Keypair:
+    Description: Dev Ec2 KeyPair
+    Type: AWS::EC2::KeyPair::KeyName
+
+  AMI:
+    Description: AMI of Ec2 (Amazon Linux2)
+    Type: AWS::EC2::Image::Id
+    Default: ami-014009fa4a1467d53
+
+  ## InstnaceType(Bastion,Web,Git,Was,Api,Relay)
+
+  BastionInstanceType:
+    Description: WebServer EC2 instance type
+    Type: String
+    Default: t3.small
+
+  WebInstanceType:
+    Description: WebServer EC2 instance type
+    Type: String
+    Default: t3.medium
+
+  WasInstanceType:
+    Description: WebServer EC2 instance type
+    Type: String
+    Default: t3.medium
+
+  GitInstanceType:
+    Description: WebServer EC2 instance type
+    Type: String
+    Default: t3.medium
+
+  ApiInstanceType:
+    Description: WebServer EC2 instance type
+    Type: String
+    Default: t3.medium
+
+  RelayInstanceType:
+    Description: WebServer EC2 instance type
+    Type: String
+    Default: t3.medium
+
+  ## Private Ip (Bastion,Web,Git,Was,Api,Relay)
+
+  BastionPriIp:
+    Type: String
+    Default: 10.50.3.10
+
+  Git01PriIp:
+    Type: String
+    Default: 10.50.5.20
+
+  Web01PriIp:
+    Type: String
+    Default: 10.50.5.10
+
+  Was01PriIp:
+    Type: String
+    Default: 10.50.9.10
+
+  Api01PriIp:
+    Type: String
+    Default: 10.50.9.20
+
+  Relay01PriIp:
+    Type: String
+    Default: 10.50.9.30
+
+  ## RDS Parameter - DBInstanceType, DBMainStorage, MultiAZ
+
+  DBInstanceType:
+    Type: String
+    Default: db.m5.large
+
+  DBMainStorage:
+    Type: String
+    Default: 300
+
+  MultiAZ:
+    Type: String
+    AllowedValues:
+      - true
+      - false
+
+  ## Redis Parameter - RedisAZ, RedisType
+
+  RedisAZ:
+    Type: String
+    Default: single-az
+
+  RedisType:
+    Type: String
+    Default: cache.r6g.large
+
+## Resource
+
+Resources:
+  ## Create Role - CloudWatchAgent
+
+  CloudWatchRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: CloudWatchAgentAdminRole
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy
+        - arn:aws:iam::aws:policy/service-role/AmazonEC2RoleforSSM
+        - arn:aws:iam::aws:policy/AmazonSSMReadOnlyAccess
+
+  ## Attach Role to Ec2 - CloudWatch
+
+  CloudWatchRoleAttachment:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      InstanceProfileName: CWAgentprofile
+      Path: /
+      Roles:
+        - !Ref CloudWatchRole
+
+  ## Create EC2 - Bastion01 ,Web01, Git01, Was01, Api01, Relay01
+
+  Bastion:
+    Type: "AWS::EC2::Instance"
+    Metadata:
+      AWS::CloudFormation::Init:
+        configSets:
+          default:
+            - 01_setupCfnHup
+            - 02_config-amazon-cloudwatch-agent
+            - 03_restart_amazon-cloudwatch-agent
+          UpdateEnvironment:
+            - 02_config-amazon-cloudwatch-agent
+            - 03_restart_amazon-cloudwatch-agent
+        # Definition of json configuration of AmazonCloudWatchAgent, you can change the configuration below.
+        02_config-amazon-cloudwatch-agent:
+          files:
+            "/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json":
+              content: !Sub |
+                {
+                  "agent": {
+                    "metrics_collection_interval": 60,
+                    "region": "ap-northeast-2",
+                    "logfile": "/opt/aws/amazon-cloudwatch-agent/logs/amazon-cloudwatch-agent.log",
+                    "debug": false,
+                    "run_as_user": "root"
+                  },
+                  "metrics": {
+                    "namespace": "CW-Agent",
+                    "append_dimensions": {
+                      "InstanceId": "${!aws:InstanceId}"                      
+                    },
+                    "metrics_collected": {                      
+                      "mem": {
+                        "measurement": [
+                          "mem_used_percent"
+                        ]
+                      },
+                      "disk": {
+                        "resources": [
+                          "/"
+                        ],
+                        "measurement": [
+                          "disk_used_percent"
+                        ]
+                      }
+                    }
+                  }
+                }
+
+        # Invoke amazon-cloudwatch-agent-ctl to restart the AmazonCloudWatchAgent.
+        03_restart_amazon-cloudwatch-agent:
+          commands:
+            01_stop_service:
+              command: /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a stop
+            02_start_service:
+              command: /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a fetch-config -m ec2 -c file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json -s
+        # Cfn-hup setting, it is to monitor the change of metadata.
+        # When there is change in the contents of json file in the metadata section, cfn-hup will call cfn-init to restart the AmazonCloudWatchAgent.
+        01_setupCfnHup:
+          files:
+            "/etc/cfn/cfn-hup.conf":
+              content: !Sub |
+                [main]
+                stack=${AWS::StackId}
+                region=${AWS::Region}
+                interval=1
+              mode: "000400"
+              owner: root
+              group: root
+            "/etc/cfn/hooks.d/amazon-cloudwatch-agent-auto-reloader.conf":
+              content: !Sub |
+                [cfn-auto-reloader-hook]
+                triggers=post.update
+                path=Resources.Bastion.Metadata.AWS::CloudFormation::Init.02_config-amazon-cloudwatch-agent
+                action=/opt/aws/bin/cfn-init -v --stack ${AWS::StackId} --resource Bastion --region ${AWS::Region} --configsets UpdateEnvironment
+                runas=root
+              mode: "000400"
+              owner: root
+              group: root
+            "/lib/systemd/system/cfn-hup.service":
+              content: !Sub |
+                [Unit]
+                Description=cfn-hup daemon
+                [Service]
+                Type=simple
+                ExecStart=/opt/aws/bin/cfn-hup
+                Restart=always
+                [Install]
+                WantedBy=multi-user.target
+          commands:
+            01enable_cfn_hup:
+              command: !Sub |
+                systemctl enable cfn-hup.service
+            02start_cfn_hup:
+              command: !Sub |
+                systemctl start cfn-hup.service
+    Properties:
+      IamInstanceProfile: !Ref CloudWatchRoleAttachment
+      InstanceType: !Ref BastionInstanceType
+      ImageId: !Ref AMI
+      KeyName: !Ref Keypair
+      NetworkInterfaces:
+        - GroupSet:
+            - !ImportValue
+              "Fn::Sub": "${ReferStack}-bastion-sg"
+          PrivateIpAddress: !Ref BastionPriIp
+          AssociatePublicIpAddress: "False"
+          DeviceIndex: "0"
+          DeleteOnTermination: "true"
+          SubnetId: !ImportValue
+            "Fn::Sub": "${ReferStack}-pub-subnet-1"
+      Tags:
+        - Key: Name
+          Value: !Sub hy-fredit-${EnvironmentName}-bastion01
+        - Key: EnvironmentName
+          Value: !Sub ${EnvironmentName}
+        - Key: auto_start_stop
+          Value: yes
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          sudo service awslogs restart
+          sudo sed -i 's/PasswordAuthentication no/PasswordAuthentication yes/g' /etc/ssh/sshd_config
+          sudo service sshd restart
+          sudo useradd infra_admin
+          sudo echo 'wjdqhgurtlsxla1!' | passwd --stdin infra_admin
+          sudo echo 'infra_admin ALL=NOPASSWD:ALL' >> /etc/sudoers
+          sudo rm /etc/localtime
+          sudo ln -s /usr/share/zoneinfo/Asia/Seoul /etc/localtime
+          rpm -Uvh https://s3.amazonaws.com/amazoncloudwatch-agent/amazon_linux/amd64/latest/amazon-cloudwatch-agent.rpm
+          /opt/aws/bin/cfn-init -v --stack ${AWS::StackId} --resource Bastion --region ${AWS::Region} --configsets default
+          /opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackId} --resource Bastion --region ${AWS::Region}
+
+  bastionEIP:
+    Type: AWS::EC2::EIP
+    DependsOn: Bastion
+    Properties:
+      InstanceId: !Ref Bastion
+      Tags:
+        - Key: Name
+          Value: !Sub hy-fredit-${EnvironmentName}-bastion-eip
+
+  Web01:
+    Type: "AWS::EC2::Instance"
+    Metadata:
+      AWS::CloudFormation::Init:
+        configSets:
+          default:
+            - 01_setupCfnHup
+            - 02_config-amazon-cloudwatch-agent
+            - 03_restart_amazon-cloudwatch-agent
+          UpdateEnvironment:
+            - 02_config-amazon-cloudwatch-agent
+            - 03_restart_amazon-cloudwatch-agent
+        # Definition of json configuration of AmazonCloudWatchAgent, you can change the configuration below.
+        02_config-amazon-cloudwatch-agent:
+          files:
+            "/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json":
+              content: !Sub |
+                {
+                  "agent": {
+                    "metrics_collection_interval": 60,
+                    "region": "ap-northeast-2",
+                    "logfile": "/opt/aws/amazon-cloudwatch-agent/logs/amazon-cloudwatch-agent.log",
+                    "debug": false,
+                    "run_as_user": "root"
+                  },
+                  "metrics": {
+                    "namespace": "CW-Agent",
+                    "append_dimensions": {
+                      "InstanceId": "${!aws:InstanceId}"                      
+                    },
+                    "metrics_collected": {                      
+                      "mem": {
+                        "measurement": [
+                          "mem_used_percent"
+                        ]
+                      },
+                      "disk": {
+                        "resources": [
+                          "/"
+                        ],
+                        "measurement": [
+                          "disk_used_percent"
+                        ]
+                      }
+                    }
+                  }
+                }
+
+        # Invoke amazon-cloudwatch-agent-ctl to restart the AmazonCloudWatchAgent.
+        03_restart_amazon-cloudwatch-agent:
+          commands:
+            01_stop_service:
+              command: /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a stop
+            02_start_service:
+              command: /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a fetch-config -m ec2 -c file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json -s
+        # Cfn-hup setting, it is to monitor the change of metadata.
+        # When there is change in the contents of json file in the metadata section, cfn-hup will call cfn-init to restart the AmazonCloudWatchAgent.
+        01_setupCfnHup:
+          files:
+            "/etc/cfn/cfn-hup.conf":
+              content: !Sub |
+                [main]
+                stack=${AWS::StackId}
+                region=${AWS::Region}
+                interval=1
+              mode: "000400"
+              owner: root
+              group: root
+            "/etc/cfn/hooks.d/amazon-cloudwatch-agent-auto-reloader.conf":
+              content: !Sub |
+                [cfn-auto-reloader-hook]
+                triggers=post.update
+                path=Resources.Bastion.Metadata.AWS::CloudFormation::Init.02_config-amazon-cloudwatch-agent
+                action=/opt/aws/bin/cfn-init -v --stack ${AWS::StackId} --resource Bastion --region ${AWS::Region} --configsets UpdateEnvironment
+                runas=root
+              mode: "000400"
+              owner: root
+              group: root
+            "/lib/systemd/system/cfn-hup.service":
+              content: !Sub |
+                [Unit]
+                Description=cfn-hup daemon
+                [Service]
+                Type=simple
+                ExecStart=/opt/aws/bin/cfn-hup
+                Restart=always
+                [Install]
+                WantedBy=multi-user.target
+          commands:
+            01enable_cfn_hup:
+              command: !Sub |
+                systemctl enable cfn-hup.service
+            02start_cfn_hup:
+              command: !Sub |
+                systemctl start cfn-hup.service
+    Properties:
+      IamInstanceProfile: !Ref CloudWatchRoleAttachment
+      InstanceType: !Ref WebInstanceType
+      ImageId: !Ref AMI
+      KeyName: !Ref Keypair
+      BlockDeviceMappings:
+        - DeviceName: /dev/xvda
+          Ebs:
+            VolumeSize: 100
+      NetworkInterfaces:
+        - GroupSet:
+            - !ImportValue
+              "Fn::Sub": "${ReferStack}-web-sg"
+          PrivateIpAddress: !Ref Web01PriIp
+          AssociatePublicIpAddress: "False"
+          DeviceIndex: "0"
+          DeleteOnTermination: "true"
+          SubnetId: !ImportValue
+            "Fn::Sub": "${ReferStack}-web-pri-subnet-1"
+      Tags:
+        - Key: Name
+          Value: !Sub hy-fredit-${EnvironmentName}-web01
+        - Key: EnvironmentName
+          Value: !Sub ${EnvironmentName}
+        - Key: auto_start_stop
+          Value: yes
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          sudo service awslogs restart
+          sudo sed -i 's/PasswordAuthentication no/PasswordAuthentication yes/g' /etc/ssh/sshd_config
+          sudo service sshd restart
+          sudo useradd infra_admin
+          sudo echo 'wjdqhgurtlsxla1!' | passwd --stdin infra_admin
+          sudo echo 'infra_admin ALL=NOPASSWD:ALL' >> /etc/sudoers
+          sudo rm /etc/localtime
+          sudo ln -s /usr/share/zoneinfo/Asia/Seoul /etc/localtime
+          rpm -Uvh https://s3.amazonaws.com/amazoncloudwatch-agent/amazon_linux/amd64/latest/amazon-cloudwatch-agent.rpm
+          /opt/aws/bin/cfn-init -v --stack ${AWS::StackId} --resource Bastion --region ${AWS::Region} --configsets default
+          /opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackId} --resource Bastion --region ${AWS::Region}
+
+  Git01:
+    Type: "AWS::EC2::Instance"
+    Metadata:
+      AWS::CloudFormation::Init:
+        configSets:
+          default:
+            - 01_setupCfnHup
+            - 02_config-amazon-cloudwatch-agent
+            - 03_restart_amazon-cloudwatch-agent
+          UpdateEnvironment:
+            - 02_config-amazon-cloudwatch-agent
+            - 03_restart_amazon-cloudwatch-agent
+        # Definition of json configuration of AmazonCloudWatchAgent, you can change the configuration below.
+        02_config-amazon-cloudwatch-agent:
+          files:
+            "/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json":
+              content: !Sub |
+                {
+                  "agent": {
+                    "metrics_collection_interval": 60,
+                    "region": "ap-northeast-2",
+                    "logfile": "/opt/aws/amazon-cloudwatch-agent/logs/amazon-cloudwatch-agent.log",
+                    "debug": false,
+                    "run_as_user": "root"
+                  },
+                  "metrics": {
+                    "namespace": "CW-Agent",
+                    "append_dimensions": {
+                      "InstanceId": "${!aws:InstanceId}"                      
+                    },
+                    "metrics_collected": {                      
+                      "mem": {
+                        "measurement": [
+                          "mem_used_percent"
+                        ]
+                      },
+                      "disk": {
+                        "resources": [
+                          "/"
+                        ],
+                        "measurement": [
+                          "disk_used_percent"
+                        ]
+                      }
+                    }
+                  }
+                }
+
+        # Invoke amazon-cloudwatch-agent-ctl to restart the AmazonCloudWatchAgent.
+        03_restart_amazon-cloudwatch-agent:
+          commands:
+            01_stop_service:
+              command: /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a stop
+            02_start_service:
+              command: /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a fetch-config -m ec2 -c file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json -s
+        # Cfn-hup setting, it is to monitor the change of metadata.
+        # When there is change in the contents of json file in the metadata section, cfn-hup will call cfn-init to restart the AmazonCloudWatchAgent.
+        01_setupCfnHup:
+          files:
+            "/etc/cfn/cfn-hup.conf":
+              content: !Sub |
+                [main]
+                stack=${AWS::StackId}
+                region=${AWS::Region}
+                interval=1
+              mode: "000400"
+              owner: root
+              group: root
+            "/etc/cfn/hooks.d/amazon-cloudwatch-agent-auto-reloader.conf":
+              content: !Sub |
+                [cfn-auto-reloader-hook]
+                triggers=post.update
+                path=Resources.Bastion.Metadata.AWS::CloudFormation::Init.02_config-amazon-cloudwatch-agent
+                action=/opt/aws/bin/cfn-init -v --stack ${AWS::StackId} --resource Bastion --region ${AWS::Region} --configsets UpdateEnvironment
+                runas=root
+              mode: "000400"
+              owner: root
+              group: root
+            "/lib/systemd/system/cfn-hup.service":
+              content: !Sub |
+                [Unit]
+                Description=cfn-hup daemon
+                [Service]
+                Type=simple
+                ExecStart=/opt/aws/bin/cfn-hup
+                Restart=always
+                [Install]
+                WantedBy=multi-user.target
+          commands:
+            01enable_cfn_hup:
+              command: !Sub |
+                systemctl enable cfn-hup.service
+            02start_cfn_hup:
+              command: !Sub |
+                systemctl start cfn-hup.service
+    Properties:
+      IamInstanceProfile: !Ref CloudWatchRoleAttachment
+      InstanceType: !Ref GitInstanceType
+      ImageId: !Ref AMI
+      KeyName: !Ref Keypair
+      NetworkInterfaces:
+        - GroupSet:
+            - !ImportValue
+              "Fn::Sub": "${ReferStack}-web-sg"
+          PrivateIpAddress: !Ref Git01PriIp
+          AssociatePublicIpAddress: "False"
+          DeviceIndex: "0"
+          DeleteOnTermination: "true"
+          SubnetId: !ImportValue
+            "Fn::Sub": "${ReferStack}-web-pri-subnet-1"
+      BlockDeviceMappings:
+        - DeviceName: /dev/xvda
+          Ebs:
+            VolumeSize: 100
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          sudo service awslogs restart
+          sudo sed -i 's/PasswordAuthentication no/PasswordAuthentication yes/g' /etc/ssh/sshd_config
+          sudo service sshd restart
+          sudo useradd infra_admin
+          sudo echo 'wjdqhgurtlsxla1!' | passwd --stdin infra_admin
+          sudo echo 'infra_admin ALL=NOPASSWD:ALL' >> /etc/sudoers
+          sudo rm /etc/localtime
+          sudo ln -s /usr/share/zoneinfo/Asia/Seoul /etc/localtime
+          rpm -Uvh https://s3.amazonaws.com/amazoncloudwatch-agent/amazon_linux/amd64/latest/amazon-cloudwatch-agent.rpm
+          /opt/aws/bin/cfn-init -v --stack ${AWS::StackId} --resource Bastion --region ${AWS::Region} --configsets default
+          /opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackId} --resource Bastion --region ${AWS::Region}
+      Tags:
+        - Key: Name
+          Value: !Sub hy-fredit-${EnvironmentName}-git01
+        - Key: EnvironmentName
+          Value: !Sub ${EnvironmentName}
+        - Key: auto_start_stop
+          Value: yes
+
+  Was01:
+    Type: "AWS::EC2::Instance"
+    Metadata:
+      AWS::CloudFormation::Init:
+        configSets:
+          default:
+            - 01_setupCfnHup
+            - 02_config-amazon-cloudwatch-agent
+            - 03_restart_amazon-cloudwatch-agent
+          UpdateEnvironment:
+            - 02_config-amazon-cloudwatch-agent
+            - 03_restart_amazon-cloudwatch-agent
+        # Definition of json configuration of AmazonCloudWatchAgent, you can change the configuration below.
+        02_config-amazon-cloudwatch-agent:
+          files:
+            "/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json":
+              content: !Sub |
+                {
+                  "agent": {
+                    "metrics_collection_interval": 60,
+                    "region": "ap-northeast-2",
+                    "logfile": "/opt/aws/amazon-cloudwatch-agent/logs/amazon-cloudwatch-agent.log",
+                    "debug": false,
+                    "run_as_user": "root"
+                  },
+                  "metrics": {
+                    "namespace": "CW-Agent",
+                    "append_dimensions": {
+                      "InstanceId": "${!aws:InstanceId}"                      
+                    },
+                    "metrics_collected": {                      
+                      "mem": {
+                        "measurement": [
+                          "mem_used_percent"
+                        ]
+                      },
+                      "disk": {
+                        "resources": [
+                          "/"
+                        ],
+                        "measurement": [
+                          "disk_used_percent"
+                        ]
+                      }
+                    }
+                  }
+                }
+
+        # Invoke amazon-cloudwatch-agent-ctl to restart the AmazonCloudWatchAgent.
+        03_restart_amazon-cloudwatch-agent:
+          commands:
+            01_stop_service:
+              command: /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a stop
+            02_start_service:
+              command: /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a fetch-config -m ec2 -c file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json -s
+        # Cfn-hup setting, it is to monitor the change of metadata.
+        # When there is change in the contents of json file in the metadata section, cfn-hup will call cfn-init to restart the AmazonCloudWatchAgent.
+        01_setupCfnHup:
+          files:
+            "/etc/cfn/cfn-hup.conf":
+              content: !Sub |
+                [main]
+                stack=${AWS::StackId}
+                region=${AWS::Region}
+                interval=1
+              mode: "000400"
+              owner: root
+              group: root
+            "/etc/cfn/hooks.d/amazon-cloudwatch-agent-auto-reloader.conf":
+              content: !Sub |
+                [cfn-auto-reloader-hook]
+                triggers=post.update
+                path=Resources.Bastion.Metadata.AWS::CloudFormation::Init.02_config-amazon-cloudwatch-agent
+                action=/opt/aws/bin/cfn-init -v --stack ${AWS::StackId} --resource Bastion --region ${AWS::Region} --configsets UpdateEnvironment
+                runas=root
+              mode: "000400"
+              owner: root
+              group: root
+            "/lib/systemd/system/cfn-hup.service":
+              content: !Sub |
+                [Unit]
+                Description=cfn-hup daemon
+                [Service]
+                Type=simple
+                ExecStart=/opt/aws/bin/cfn-hup
+                Restart=always
+                [Install]
+                WantedBy=multi-user.target
+          commands:
+            01enable_cfn_hup:
+              command: !Sub |
+                systemctl enable cfn-hup.service
+            02start_cfn_hup:
+              command: !Sub |
+                systemctl start cfn-hup.service
+    Properties:
+      IamInstanceProfile: !Ref CloudWatchRoleAttachment
+      InstanceType: !Ref WasInstanceType
+      ImageId: !Ref AMI
+      KeyName: !Ref Keypair
+      NetworkInterfaces:
+        - GroupSet:
+            - !ImportValue
+              "Fn::Sub": "${ReferStack}-was-sg"
+          PrivateIpAddress: !Ref Was01PriIp
+          AssociatePublicIpAddress: "False"
+          DeviceIndex: "0"
+          DeleteOnTermination: "true"
+          SubnetId: !ImportValue
+            "Fn::Sub": "${ReferStack}-was-pri-subnet-1"
+      BlockDeviceMappings:
+        - DeviceName: /dev/xvda
+          Ebs:
+            VolumeSize: 100
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          sudo service awslogs restart
+          sudo sed -i 's/PasswordAuthentication no/PasswordAuthentication yes/g' /etc/ssh/sshd_config
+          sudo service sshd restart
+          sudo useradd infra_admin
+          sudo echo 'wjdqhgurtlsxla1!' | passwd --stdin infra_admin
+          sudo echo 'infra_admin ALL=NOPASSWD:ALL' >> /etc/sudoers
+          sudo rm /etc/localtime
+          sudo ln -s /usr/share/zoneinfo/Asia/Seoul /etc/localtime
+          rpm -Uvh https://s3.amazonaws.com/amazoncloudwatch-agent/amazon_linux/amd64/latest/amazon-cloudwatch-agent.rpm
+          /opt/aws/bin/cfn-init -v --stack ${AWS::StackId} --resource Bastion --region ${AWS::Region} --configsets default
+          /opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackId} --resource Bastion --region ${AWS::Region}
+      Tags:
+        - Key: Name
+          Value: !Sub hy-fredit-${EnvironmentName}-was01
+        - Key: EnvironmentName
+          Value: !Sub ${EnvironmentName}
+        - Key: auto_start_stop
+          Value: yes
+
+  Api01:
+    Type: "AWS::EC2::Instance"
+    Metadata:
+      AWS::CloudFormation::Init:
+        configSets:
+          default:
+            - 01_setupCfnHup
+            - 02_config-amazon-cloudwatch-agent
+            - 03_restart_amazon-cloudwatch-agent
+          UpdateEnvironment:
+            - 02_config-amazon-cloudwatch-agent
+            - 03_restart_amazon-cloudwatch-agent
+        # Definition of json configuration of AmazonCloudWatchAgent, you can change the configuration below.
+        02_config-amazon-cloudwatch-agent:
+          files:
+            "/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json":
+              content: !Sub |
+                {
+                  "agent": {
+                    "metrics_collection_interval": 60,
+                    "region": "ap-northeast-2",
+                    "logfile": "/opt/aws/amazon-cloudwatch-agent/logs/amazon-cloudwatch-agent.log",
+                    "debug": false,
+                    "run_as_user": "root"
+                  },
+                  "metrics": {
+                    "namespace": "CW-Agent",
+                    "append_dimensions": {
+                      "InstanceId": "${!aws:InstanceId}"                      
+                    },
+                    "metrics_collected": {                      
+                      "mem": {
+                        "measurement": [
+                          "mem_used_percent"
+                        ]
+                      },
+                      "disk": {
+                        "resources": [
+                          "/"
+                        ],
+                        "measurement": [
+                          "disk_used_percent"
+                        ]
+                      }
+                    }
+                  }
+                }
+
+        # Invoke amazon-cloudwatch-agent-ctl to restart the AmazonCloudWatchAgent.
+        03_restart_amazon-cloudwatch-agent:
+          commands:
+            01_stop_service:
+              command: /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a stop
+            02_start_service:
+              command: /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a fetch-config -m ec2 -c file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json -s
+        # Cfn-hup setting, it is to monitor the change of metadata.
+        # When there is change in the contents of json file in the metadata section, cfn-hup will call cfn-init to restart the AmazonCloudWatchAgent.
+        01_setupCfnHup:
+          files:
+            "/etc/cfn/cfn-hup.conf":
+              content: !Sub |
+                [main]
+                stack=${AWS::StackId}
+                region=${AWS::Region}
+                interval=1
+              mode: "000400"
+              owner: root
+              group: root
+            "/etc/cfn/hooks.d/amazon-cloudwatch-agent-auto-reloader.conf":
+              content: !Sub |
+                [cfn-auto-reloader-hook]
+                triggers=post.update
+                path=Resources.Bastion.Metadata.AWS::CloudFormation::Init.02_config-amazon-cloudwatch-agent
+                action=/opt/aws/bin/cfn-init -v --stack ${AWS::StackId} --resource Bastion --region ${AWS::Region} --configsets UpdateEnvironment
+                runas=root
+              mode: "000400"
+              owner: root
+              group: root
+            "/lib/systemd/system/cfn-hup.service":
+              content: !Sub |
+                [Unit]
+                Description=cfn-hup daemon
+                [Service]
+                Type=simple
+                ExecStart=/opt/aws/bin/cfn-hup
+                Restart=always
+                [Install]
+                WantedBy=multi-user.target
+          commands:
+            01enable_cfn_hup:
+              command: !Sub |
+                systemctl enable cfn-hup.service
+            02start_cfn_hup:
+              command: !Sub |
+                systemctl start cfn-hup.service
+    Properties:
+      IamInstanceProfile: !Ref CloudWatchRoleAttachment
+      InstanceType: !Ref ApiInstanceType
+      ImageId: !Ref AMI
+      KeyName: !Ref Keypair
+      NetworkInterfaces:
+        - GroupSet:
+            - !ImportValue
+              "Fn::Sub": "${ReferStack}-was-sg"
+          PrivateIpAddress: !Ref Api01PriIp
+          AssociatePublicIpAddress: "False"
+          DeviceIndex: "0"
+          DeleteOnTermination: "true"
+          SubnetId: !ImportValue
+            "Fn::Sub": "${ReferStack}-was-pri-subnet-1"
+      BlockDeviceMappings:
+        - DeviceName: /dev/xvda
+          Ebs:
+            VolumeSize: 100
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          sudo service awslogs restart
+          sudo sed -i 's/PasswordAuthentication no/PasswordAuthentication yes/g' /etc/ssh/sshd_config
+          sudo service sshd restart
+          sudo useradd infra_admin
+          sudo echo 'wjdqhgurtlsxla1!' | passwd --stdin infra_admin
+          sudo echo 'infra_admin ALL=NOPASSWD:ALL' >> /etc/sudoers
+          sudo rm /etc/localtime
+          sudo ln -s /usr/share/zoneinfo/Asia/Seoul /etc/localtime
+          rpm -Uvh https://s3.amazonaws.com/amazoncloudwatch-agent/amazon_linux/amd64/latest/amazon-cloudwatch-agent.rpm
+          /opt/aws/bin/cfn-init -v --stack ${AWS::StackId} --resource Bastion --region ${AWS::Region} --configsets default
+          /opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackId} --resource Bastion --region ${AWS::Region}
+
+      Tags:
+        - Key: Name
+          Value: !Sub hy-fredit-${EnvironmentName}-api01
+        - Key: EnvironmentName
+          Value: !Sub ${EnvironmentName}
+        - Key: auto_start_stop
+          Value: yes
+
+  Relay01:
+    Type: "AWS::EC2::Instance"
+    Metadata:
+      AWS::CloudFormation::Init:
+        configSets:
+          default:
+            - 01_setupCfnHup
+            - 02_config-amazon-cloudwatch-agent
+            - 03_restart_amazon-cloudwatch-agent
+          UpdateEnvironment:
+            - 02_config-amazon-cloudwatch-agent
+            - 03_restart_amazon-cloudwatch-agent
+        # Definition of json configuration of AmazonCloudWatchAgent, you can change the configuration below.
+        02_config-amazon-cloudwatch-agent:
+          files:
+            "/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json":
+              content: !Sub |
+                {
+                  "agent": {
+                    "metrics_collection_interval": 60,
+                    "region": "ap-northeast-2",
+                    "logfile": "/opt/aws/amazon-cloudwatch-agent/logs/amazon-cloudwatch-agent.log",
+                    "debug": false,
+                    "run_as_user": "root"
+                  },
+                  "metrics": {
+                    "namespace": "CW-Agent",
+                    "append_dimensions": {
+                      "InstanceId": "${!aws:InstanceId}"                      
+                    },
+                    "metrics_collected": {                      
+                      "mem": {
+                        "measurement": [
+                          "mem_used_percent"
+                        ]
+                      },
+                      "disk": {
+                        "resources": [
+                          "/"
+                        ],
+                        "measurement": [
+                          "disk_used_percent"
+                        ]
+                      }
+                    }
+                  }
+                }
+
+        # Invoke amazon-cloudwatch-agent-ctl to restart the AmazonCloudWatchAgent.
+        03_restart_amazon-cloudwatch-agent:
+          commands:
+            01_stop_service:
+              command: /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a stop
+            02_start_service:
+              command: /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a fetch-config -m ec2 -c file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json -s
+        # Cfn-hup setting, it is to monitor the change of metadata.
+        # When there is change in the contents of json file in the metadata section, cfn-hup will call cfn-init to restart the AmazonCloudWatchAgent.
+        01_setupCfnHup:
+          files:
+            "/etc/cfn/cfn-hup.conf":
+              content: !Sub |
+                [main]
+                stack=${AWS::StackId}
+                region=${AWS::Region}
+                interval=1
+              mode: "000400"
+              owner: root
+              group: root
+            "/etc/cfn/hooks.d/amazon-cloudwatch-agent-auto-reloader.conf":
+              content: !Sub |
+                [cfn-auto-reloader-hook]
+                triggers=post.update
+                path=Resources.Bastion.Metadata.AWS::CloudFormation::Init.02_config-amazon-cloudwatch-agent
+                action=/opt/aws/bin/cfn-init -v --stack ${AWS::StackId} --resource Bastion --region ${AWS::Region} --configsets UpdateEnvironment
+                runas=root
+              mode: "000400"
+              owner: root
+              group: root
+            "/lib/systemd/system/cfn-hup.service":
+              content: !Sub |
+                [Unit]
+                Description=cfn-hup daemon
+                [Service]
+                Type=simple
+                ExecStart=/opt/aws/bin/cfn-hup
+                Restart=always
+                [Install]
+                WantedBy=multi-user.target
+          commands:
+            01enable_cfn_hup:
+              command: !Sub |
+                systemctl enable cfn-hup.service
+            02start_cfn_hup:
+              command: !Sub |
+                systemctl start cfn-hup.service
+    Properties:
+      IamInstanceProfile: !Ref CloudWatchRoleAttachment
+      InstanceType: !Ref RelayInstanceType
+      ImageId: !Ref AMI
+      KeyName: !Ref Keypair
+      NetworkInterfaces:
+        - GroupSet:
+            - !ImportValue
+              "Fn::Sub": "${ReferStack}-was-sg"
+          PrivateIpAddress: !Ref Relay01PriIp
+          AssociatePublicIpAddress: "False"
+          DeviceIndex: "0"
+          DeleteOnTermination: "true"
+          SubnetId: !ImportValue
+            "Fn::Sub": "${ReferStack}-was-pri-subnet-1"
+      BlockDeviceMappings:
+        - DeviceName: /dev/xvda
+          Ebs:
+            VolumeSize: 100
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          sudo service awslogs restart
+          sudo sed -i 's/PasswordAuthentication no/PasswordAuthentication yes/g' /etc/ssh/sshd_config
+          sudo service sshd restart
+          sudo useradd infra_admin
+          sudo echo 'wjdqhgurtlsxla1!' | passwd --stdin infra_admin
+          sudo echo 'infra_admin ALL=NOPASSWD:ALL' >> /etc/sudoers
+          sudo rm /etc/localtime
+          sudo ln -s /usr/share/zoneinfo/Asia/Seoul /etc/localtime
+          rpm -Uvh https://s3.amazonaws.com/amazoncloudwatch-agent/amazon_linux/amd64/latest/amazon-cloudwatch-agent.rpm
+          /opt/aws/bin/cfn-init -v --stack ${AWS::StackId} --resource Bastion --region ${AWS::Region} --configsets default
+          /opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackId} --resource Bastion --region ${AWS::Region}
+
+      Tags:
+        - Key: Name
+          Value: !Sub hy-fredit-${EnvironmentName}-relay01
+        - Key: EnvironmentName
+          Value: !Sub ${EnvironmentName}
+        - Key: auto_start_stop
+          Value: yes
+
+  ## Create Loadbalance
+#  NLB:
+#    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+#    Properties:
+#      Name: !Sub hy-fredit-${EnvironmentName}-nlb
+#      Type: network
+#      Subnets:
+#        - !ImportValue
+#          "Fn::Sub": "${ReferStack}-elb-pub-subnet-1"
+#      Tags:
+#        - Key: Name
+#          Value: !Sub hy-fredit-${EnvironmentName}-nlb
+
+## Create Target Group
+
+#  WebTargetGroup:
+#    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+#    Properties:
+#      VpcId: !ImportValue
+#        "Fn::Sub": "${ReferStack}-vpc"
+#      Name: !Sub hy-fredit-${EnvironmentName}-tg-8080
+#      Port: 8080
+#      Protocol: TCP
+#      Targets:
+#        - Id: !Ref Web01
+#          Port: 8080
+#      HealthCheckEnabled: true
+#      HealthCheckIntervalSeconds: 30
+#      HealthCheckProtocol: TCP
+#      HealthCheckTimeoutSeconds: 10
+#      HealthyThresholdCount: 3
+#      UnhealthyThresholdCount: 3
+#      Tags:
+#        - Key: Name
+#          Value: !Sub hy-fredit-${EnvironmentName}-tg-8080
+
+#  GitTargetGroup:
+#    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+#    Properties:
+#      VpcId: !ImportValue
+#        "Fn::Sub": "${ReferStack}-vpc"
+#      Name: !Sub hy-fredit-${EnvironmentName}-tg-8084
+#      Port: 8084
+#      Protocol: TCP
+#      Targets:
+#        - Id: !Ref Git01
+#          Port: 8084
+#      HealthCheckEnabled: true
+#      HealthCheckIntervalSeconds: 30
+#      HealthCheckProtocol: TCP
+#      HealthCheckTimeoutSeconds: 10
+#      HealthyThresholdCount: 3
+#      UnhealthyThresholdCount: 3
+#      Tags:
+#        - Key: Name
+#          Value: !Sub hy-fredit-${EnvironmentName}-tg-8084
+
+## Listener
+
+#  WebListener:
+#    Type: AWS::ElasticLoadBalancingV2::Listener
+#    Properties:
+#      DefaultActions:
+#        - Type: forward
+#          TargetGroupArn: !Ref WebTargetGroup
+#      LoadBalancerArn: !Ref NLB
+#      Port: 80
+#      Protocol: TCP
+
+#  GitListener:
+#    Type: AWS::ElasticLoadBalancingV2::Listener
+#    Properties:
+#      DefaultActions:
+#        - Type: forward
+#          TargetGroupArn: !Ref GitTargetGroup
+#      LoadBalancerArn: !Ref NLB
+#      Port: 8084
+#      Protocol: TCP
+
+## Create RDS (DB01)
+#  DB01:
+#    Type: "AWS::RDS::DBInstance"
+#    Properties:
+#      AllocatedStorage: !Ref DBMainStorage
+#      AutoMinorVersionUpgrade: no
+#      DBInstanceIdentifier: !Sub hy-fredit-${EnvironmentName}-db01
+#      DBInstanceClass: !Ref DBInstanceType
+#      DBParameterGroupName: !ImportValue
+#        "Fn::Sub": "${ReferStack}-db-param-group"
+#      VPCSecurityGroups:
+#        - !ImportValue
+#          "Fn::Sub": "${ReferStack}-db-sg"
+#      DBSubnetGroupName: !ImportValue
+#        "Fn::Sub": "${ReferStack}-db-subnet-group"
+#      DeleteAutomatedBackups: no
+#      DeletionProtection: yes
+#      Engine: postgres
+#      EngineVersion: 13
+#      MasterUsername: dbAdmin
+#      MasterUserPassword: wjdqhgurtlsxla1!
+#      MultiAZ: !Ref MultiAZ
+#      OptionGroupName: !ImportValue
+#        "Fn::Sub": "${ReferStack}-db-option-group"
+#      StorageType: gp2
+#      Tags:
+#        - Key: Name
+#          Value: !Sub hy-fredit-${EnvironmentName}-db01
+
+## Create ElasticCache - Redis01 --##
+
+#  Redis01:
+#    Type: "AWS::ElastiCache::CacheCluster"
+#    Properties:
+#      AutoMinorVersionUpgrade: no
+#      AZMode: !Ref RedisAZ
+#      CacheNodeType: !Sub ${RedisType}
+#      CacheParameterGroupName: !ImportValue
+#        "Fn::Sub": "${ReferStack}-redis-param-group"
+#      CacheSubnetGroupName: !ImportValue
+#        "Fn::Sub": "${ReferStack}-redis-subnet-group"
+#      VpcSecurityGroupIds:
+#        - !ImportValue
+#          "Fn::Sub": "${ReferStack}-db-sg"
+#      ClusterName: !Sub hy-fredit-${EnvironmentName}-redis01
+#      Engine: redis
+#      EngineVersion: 5.0.6
+#      NumCacheNodes: 1
+#      Tags:
+#        - Key: Name
+#          Value: !Sub hy-fredit-${EnvironmentName}-redis01

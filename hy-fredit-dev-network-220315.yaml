@@ -1,0 +1,894 @@
+Description: hy fredit Network Stack Templete
+
+## Labeling Parameters
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: "Public CIDR"
+        Parameters:
+          - elbPublicSubnet1CIDR
+          - elbPublicSubnet2CIDR
+          - PublicSubnet1CIDR
+          - PublicSubnet2CIDR
+      - Label:
+          default: "Private CIDR"
+        Parameters:
+          - elbPrivateSubnet1CIDR
+          - elbPrivateSubnet2CIDR
+          - WebPrivateSubnet1CIDR
+          - WebPrivateSubnet2CIDR
+          - WasPrivateSubnet1CIDR
+          - WasPrivateSubnet2CIDR
+          - DBPrivateSubnet1CIDR
+          - DBPrivateSubnet2CIDR
+
+Parameters:
+  ## EnvironmentName & VPC CIDR
+
+  EnvironmentName:
+    Description: An environment name that is prefixed to resource names
+    Type: String
+    Default: dev
+
+  VpcCIDR:
+    Description: hy-fredit-vpc CIDR
+    Type: String
+    Default: 10.50.0.0/16
+
+  ## elbPublicSubnet/PublicSubnet CIDR
+
+  elbPublicSubnet1CIDR:
+    Description: Define elb-public-CIDR(az-a)
+    Type: String
+    Default: 10.50.1.0/24
+
+  elbPublicSubnet2CIDR:
+    Description: Define elb-public-CIDR(az-c)
+    Type: String
+    Default: 10.50.2.0/24
+
+  PublicSubnet1CIDR:
+    Description: Define public-CIDR(az-a)
+    Type: String
+    Default: 10.50.3.0/24
+
+  PublicSubnet2CIDR:
+    Description: Define public-CIDR(az-c)
+    Type: String
+    Default: 10.50.4.0/24
+
+  ## Private Subnet CIDR (Web, elb, Was, DB)
+
+  WebPrivateSubnet1CIDR:
+    Description: Define Web private-CIDR(az-a)
+    Type: String
+    Default: 10.50.5.0/24
+
+  WebPrivateSubnet2CIDR:
+    Description: Define Web private-CIDR(az-c)
+    Type: String
+    Default: 10.50.6.0/24
+
+  elbPrivateSubnet1CIDR:
+    Description: Define Web private-CIDR(az-a)
+    Type: String
+    Default: 10.50.7.0/24
+
+  elbPrivateSubnet2CIDR:
+    Description: Define Web private-CIDR(az-c)
+    Type: String
+    Default: 10.50.8.0/24
+
+  WasPrivateSubnet1CIDR:
+    Description: Define Web private-CIDR(az-a)
+    Type: String
+    Default: 10.50.9.0/24
+
+  WasPrivateSubnet2CIDR:
+    Description: Define Web private-CIDR(az-c)
+    Type: String
+    Default: 10.50.10.0/24
+
+  DBPrivateSubnet1CIDR:
+    Description: Define DB private-CIDR(az-a)
+    Type: String
+    Default: 10.50.11.0/24
+
+  DBPrivateSubnet2CIDR:
+    Description: Define DB private-CIDR(az-c)
+    Type: String
+    Default: 10.50.12.0/24
+
+## Resource
+
+Resources:
+  ## Create VPC & InternetGateway and Attach
+
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VpcCIDR
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: !Sub hy-fredit-${EnvironmentName}-vpc
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub hy-fredit-${EnvironmentName}-igw
+
+  IGWAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      InternetGatewayId: !Ref InternetGateway
+      VpcId: !Ref VPC
+
+  ## Create PublicSubnet
+
+  elbPublicSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      CidrBlock: !Ref elbPublicSubnet1CIDR
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub hy-fredit-${EnvironmentName}-elb-pub-2a-1
+
+  elbPublicSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [2, !GetAZs ""]
+      CidrBlock: !Ref elbPublicSubnet2CIDR
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub hy-fredit-${EnvironmentName}-elb-pub-2c-1
+
+  PublicSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      CidrBlock: !Ref PublicSubnet1CIDR
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub hy-fredit-${EnvironmentName}-pub-2a-1
+
+  PublicSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [2, !GetAZs ""]
+      CidrBlock: !Ref PublicSubnet2CIDR
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub hy-fredit-${EnvironmentName}-pub-2c-1
+
+  ## Create PrivateSubnet (Web, Was, elb, DB)
+
+  WebPrivateSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      CidrBlock: !Ref WebPrivateSubnet1CIDR
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Sub hy-fredit-${EnvironmentName}-web-pri-2a-1
+
+  WebPrivateSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [2, !GetAZs ""]
+      CidrBlock: !Ref WebPrivateSubnet2CIDR
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Sub hy-fredit-${EnvironmentName}-web-pri-2c-1
+
+  WasPrivateSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      CidrBlock: !Ref WasPrivateSubnet1CIDR
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Sub hy-fredit-${EnvironmentName}-was-pri-2a-1
+
+  WasPrivateSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [2, !GetAZs ""]
+      CidrBlock: !Ref WasPrivateSubnet2CIDR
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Sub hy-fredit-${EnvironmentName}-was-pri-2c-1
+
+  elbPrivateSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      CidrBlock: !Ref elbPrivateSubnet1CIDR
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Sub hy-fredit-${EnvironmentName}-elb-pri-2a-1
+
+  elbPrivateSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [2, !GetAZs ""]
+      CidrBlock: !Ref elbPrivateSubnet2CIDR
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Sub hy-fredit-${EnvironmentName}-elb-pri-2c-1
+
+  DBPrivateSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      CidrBlock: !Ref DBPrivateSubnet1CIDR
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Sub hy-fredit-${EnvironmentName}-db-pri-2a-1
+
+  DBPrivateSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [2, !GetAZs ""]
+      CidrBlock: !Ref DBPrivateSubnet2CIDR
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Sub hy-fredit-${EnvironmentName}-db-pri-2c-1
+
+  ## Create NatGateway && NatGatewayEIP
+
+  NatGatewayEIP:
+    Type: AWS::EC2::EIP
+    DependsOn: IGWAttachment
+    Properties:
+      Domain: vpc
+      Tags:
+        - Key: Name
+          Value: !Sub hy-fredit-${EnvironmentName}-nat-eip
+
+  NatGateway:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt NatGatewayEIP.AllocationId
+      SubnetId: !Ref PublicSubnet1
+      Tags:
+        - Key: Name
+          Value: !Sub hy-fredit-${EnvironmentName}-ngw
+
+  ## Create RouteTable (Public, Private, local)
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub hy-fredit-${EnvironmentName}-pub-rt
+
+  PrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub hy-fredit-${EnvironmentName}-pri-rt
+
+  localRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub hy-fredit-${EnvironmentName}-local-rt
+
+  ## Config Route (Public, Private)
+
+  PublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: IGWAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  PrivateRoute:
+    Type: AWS::EC2::Route
+    DependsOn: NatGateway
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGateway
+
+  ## RouteTableAssociation
+
+  elbPublicSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref elbPublicSubnet1
+
+  elbPublicSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref elbPublicSubnet2
+
+  PublicSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnet1
+
+  PublicSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnet2
+
+  elbPrivateSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      SubnetId: !Ref elbPrivateSubnet1
+
+  elbPrivateSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      SubnetId: !Ref elbPrivateSubnet2
+
+  WebPrivateSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      SubnetId: !Ref WebPrivateSubnet1
+
+  WebPrivateSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      SubnetId: !Ref WebPrivateSubnet2
+
+  WasPrivateSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      SubnetId: !Ref WasPrivateSubnet1
+
+  WasPrivateSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      SubnetId: !Ref WasPrivateSubnet2
+
+  DBPrivateSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref localRouteTable
+      SubnetId: !Ref DBPrivateSubnet1
+
+  DBPrivateSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref localRouteTable
+      SubnetId: !Ref DBPrivateSubnet2
+
+  ## Create BastionSecurityGroup && Ingress
+
+  BastionSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: bastion-securityGroup
+      GroupName: !Sub hy-fredit-${EnvironmentName}-bastion-sg
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 210.122.139.253/32
+          Description: 22 yakult buld connect
+      Tags:
+        - Key: Name
+          Value: !Sub hy-fredit-${EnvironmentName}-bastion-sg
+
+  ## Create Web Security Group
+
+  WebSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: web-securitygroup
+      GroupName: !Sub hy-fredit-${EnvironmentName}-web-sg
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub hy-fredit-${EnvironmentName}-Web-sg
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          SourceSecurityGroupId: !Ref BastionSecurityGroup
+          Description: 22 bastion connect
+        - IpProtocol: tcp
+          FromPort: 8000
+          ToPort: 8000
+          CidrIp: 0.0.0.0/0
+          Description: 8000 user connect
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+          Description: 443 user connect
+        - IpProtocol: tcp
+          FromPort: 444
+          ToPort: 444
+          CidrIp: 0.0.0.0/0
+          Description: 444 user connect
+        - IpProtocol: tcp
+          FromPort: 476
+          ToPort: 476
+          CidrIp: 0.0.0.0/0
+          Description: 476 user connect
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+          Description: 80 user connect
+        - IpProtocol: tcp
+          FromPort: 8190
+          ToPort: 8190
+          CidrIp: 0.0.0.0/0
+          Description: 8190 user connect
+        - IpProtocol: tcp
+          FromPort: 8080
+          ToPort: 8080
+          CidrIp: 0.0.0.0/0
+          Description: 8080 user connect
+        - IpProtocol: icmp
+          FromPort: -1
+          ToPort: -1
+          CidrIp: 0.0.0.0/0
+          Description: Any user connect
+
+  ## WebSG Ingress
+
+  WebSGIngress1:
+    Type: "AWS::EC2::SecurityGroupIngress"
+    Properties:
+      GroupId: !Ref WebSecurityGroup
+      IpProtocol: tcp
+      FromPort: 80
+      ToPort: 82
+      SourceSecurityGroupId: !Ref WasSecurityGroup
+      Description: 80-82 fredit dev was connect
+
+  WebSGIngress2:
+    Type: "AWS::EC2::SecurityGroupIngress"
+    Properties:
+      GroupId: !Ref WebSecurityGroup
+      IpProtocol: tcp
+      FromPort: 8008
+      ToPort: 8008
+      SourceSecurityGroupId: !Ref WasSecurityGroup
+      Description: 8008 fredit dev was connect
+
+  WebSGIngress3:
+    Type: "AWS::EC2::SecurityGroupIngress"
+    Properties:
+      GroupId: !Ref WebSecurityGroup
+      IpProtocol: tcp
+      FromPort: 9080
+      ToPort: 9087
+      SourceSecurityGroupId: !Ref WasSecurityGroup
+      Description: 9080-9087 fredit dev was connect
+
+  WebSGIngress4:
+    Type: "AWS::EC2::SecurityGroupIngress"
+    Properties:
+      GroupId: !Ref WebSecurityGroup
+      IpProtocol: tcp
+      FromPort: 9443
+      ToPort: 9449
+      SourceSecurityGroupId: !Ref WasSecurityGroup
+      Description: 9443-9449 fredit dev was connect
+
+  WebSGIngress5:
+    Type: "AWS::EC2::SecurityGroupIngress"
+    Properties:
+      GroupId: !Ref WebSecurityGroup
+      IpProtocol: tcp
+      FromPort: 9060
+      ToPort: 9060
+      SourceSecurityGroupId: !Ref WasSecurityGroup
+      Description: 9060 fredit dev was connect
+
+  WebSGIngress6:
+    Type: "AWS::EC2::SecurityGroupIngress"
+    Properties:
+      GroupId: !Ref WebSecurityGroup
+      IpProtocol: tcp
+      FromPort: 9043
+      ToPort: 9043
+      SourceSecurityGroupId: !Ref WasSecurityGroup
+      Description: 9043 fredit dev was connect
+
+  WebSGIngress7:
+    Type: "AWS::EC2::SecurityGroupIngress"
+    Properties:
+      GroupId: !Ref WebSecurityGroup
+      IpProtocol: tcp
+      FromPort: 443
+      ToPort: 446
+      SourceSecurityGroupId: !Ref WasSecurityGroup
+      Description: 443-446 fredit dev was connect
+
+  WebSGIngress8:
+    Type: "AWS::EC2::SecurityGroupIngress"
+    Properties:
+      GroupId: !Ref WebSecurityGroup
+      IpProtocol: icmp
+      FromPort: -1
+      ToPort: -1
+      SourceSecurityGroupId: !Ref WasSecurityGroup
+      Description: any fredit dev was connect
+
+  ## Create WasSecurityGroup
+
+  WasSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: was-securitygroup
+      GroupName: !Sub hy-fredit-${EnvironmentName}-was-sg
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub hy-fredit-${EnvironmentName}-was-sg
+
+  ## WasSG Ingress
+
+  WasSGIngress1:
+    Type: "AWS::EC2::SecurityGroupIngress"
+    Properties:
+      GroupId: !Ref WasSecurityGroup
+      IpProtocol: tcp
+      FromPort: 80
+      ToPort: 82
+      SourceSecurityGroupId: !Ref WebSecurityGroup
+      Description: 80-82 fredit dev web connect
+
+  WasSGIngress2:
+    Type: "AWS::EC2::SecurityGroupIngress"
+    Properties:
+      GroupId: !Ref WasSecurityGroup
+      IpProtocol: tcp
+      FromPort: 8008
+      ToPort: 8008
+      SourceSecurityGroupId: !Ref WebSecurityGroup
+      Description: 8008 fredit dev web connect
+
+  WasSGIngress3:
+    Type: "AWS::EC2::SecurityGroupIngress"
+    Properties:
+      GroupId: !Ref WasSecurityGroup
+      IpProtocol: tcp
+      FromPort: 9080
+      ToPort: 9087
+      SourceSecurityGroupId: !Ref WebSecurityGroup
+      Description: 9080-9087 fredit dev web connect
+
+  WasSGIngress4:
+    Type: "AWS::EC2::SecurityGroupIngress"
+    Properties:
+      GroupId: !Ref WasSecurityGroup
+      IpProtocol: tcp
+      FromPort: 9443
+      ToPort: 9449
+      SourceSecurityGroupId: !Ref WebSecurityGroup
+      Description: 9443-9449 fredit dev web connect
+
+  WasSGIngress5:
+    Type: "AWS::EC2::SecurityGroupIngress"
+    Properties:
+      GroupId: !Ref WasSecurityGroup
+      IpProtocol: tcp
+      FromPort: 9060
+      ToPort: 9060
+      SourceSecurityGroupId: !Ref WebSecurityGroup
+      Description: 9060 fredit dev web connect
+
+  WasSGIngress6:
+    Type: "AWS::EC2::SecurityGroupIngress"
+    Properties:
+      GroupId: !Ref WasSecurityGroup
+      IpProtocol: tcp
+      FromPort: 9043
+      ToPort: 9043
+      SourceSecurityGroupId: !Ref WebSecurityGroup
+      Description: 9043 fredit dev web connect
+
+  WasSGIngress7:
+    Type: "AWS::EC2::SecurityGroupIngress"
+    Properties:
+      GroupId: !Ref WasSecurityGroup
+      IpProtocol: tcp
+      FromPort: 443
+      ToPort: 446
+      SourceSecurityGroupId: !Ref WebSecurityGroup
+      Description: 443-446 fredit dev web connect
+
+  WasSGIngress9:
+    Type: "AWS::EC2::SecurityGroupIngress"
+    Properties:
+      GroupId: !Ref WasSecurityGroup
+      IpProtocol: icmp
+      FromPort: -1
+      ToPort: -1
+      SourceSecurityGroupId: !Ref WebSecurityGroup
+      Description: any fredit dev web connect
+
+  ## Create DBSecurityGroup && Ingress
+
+  DBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: DB-SecurityGroup
+      GroupName: !Sub hy-fredit-${EnvironmentName}-db-sg
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub hy-fredit-${EnvironmentName}-db-sg
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          SourceSecurityGroupId: !Ref BastionSecurityGroup
+          Description: 5432 bastion connect
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          SourceSecurityGroupId: !Ref WebSecurityGroup
+          Description: 5432 fredit dev web connect
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          SourceSecurityGroupId: !Ref WasSecurityGroup
+          Description: 5432 fredit dev was connect
+
+  ## DB Subnet Group
+
+  DBSubnetGroup:
+    Type: "AWS::RDS::DBSubnetGroup"
+    Properties:
+      DBSubnetGroupDescription: hy-fredit-dev-db-subnet-group
+      SubnetIds:
+        - !Ref DBPrivateSubnet1
+        - !Ref DBPrivateSubnet2
+      Tags:
+        - Key: Name
+          Value: !Sub hy-fredit-${EnvironmentName}-db-subnet-group
+
+  ## DB ParameterGroup
+
+  DBParameterGroup:
+    Type: "AWS::RDS::DBParameterGroup"
+    Properties:
+      Description: hy-fredit-dev-db-param-group
+      Family: postgres13
+      Tags:
+        - Key: Name
+          Value: !Sub hy-fredit-${EnvironmentName}-db-param-group
+
+  ## DB OptionGroup
+
+  DBOptionGroup:
+    Type: "AWS::RDS::OptionGroup"
+    Properties:
+      EngineName: postgres
+      MajorEngineVersion: "13"
+      OptionGroupDescription: hy-frsdit-dev-db-option-group
+      Tags:
+        - Key: Name
+          Value: !Sub hy-fredit-${EnvironmentName}-db-option-group
+
+  ## Redis SubnetGroup
+
+  RedisSubnetGroup:
+    Type: "AWS::ElastiCache::SubnetGroup"
+    Properties:
+      Description: hy-fredit-dev-redis-subnet-group
+      SubnetIds:
+        - !Ref DBPrivateSubnet1
+        - !Ref DBPrivateSubnet2
+      Tags:
+        - Key: Name
+          Value: !Sub hy-fredit-${EnvironmentName}-redis-subnet-group
+  ## Redis ParameterGroup
+
+  RedisParameterGroup:
+    Type: "AWS::ElastiCache::ParameterGroup"
+    Properties:
+      Description: hy-fredit-dev-redis-param-group
+      CacheParameterGroupFamily: redis5.0
+      Tags:
+        - Key: Name
+          Value: !Sub hy-fredit-${EnvironmentName}-redis-param-group
+
+## output
+
+Outputs:
+  ## Export VPC && Subnet
+
+  VPC:
+    Description: VPC ID
+    Value: !Ref VPC
+    Export:
+      Name: !Sub "${AWS::StackName}-vpc"
+
+  PublicSubnet1:
+    Description: Pub Subnet1 ID
+    Value: !Ref PublicSubnet1
+    Export:
+      Name: !Sub "${AWS::StackName}-pub-subnet-1"
+
+  PublicSubnet2:
+    Description: Pub Subnet2 ID
+    Value: !Ref PublicSubnet2
+    Export:
+      Name: !Sub "${AWS::StackName}-pub-subnet-2"
+
+  elbPublicSubnet1:
+    Description: elb Pub Subnet1 ID
+    Value: !Ref elbPublicSubnet1
+    Export:
+      Name: !Sub "${AWS::StackName}-elb-pub-subnet-1"
+
+  elbPublicSubnet2:
+    Description: elb Pub Subnet2 ID
+    Value: !Ref elbPublicSubnet2
+    Export:
+      Name: !Sub "${AWS::StackName}-elb-pub-subnet-2"
+
+  WebPrivateSubnet1:
+    Description: Web pri Subnet1 ID
+    Value: !Ref WebPrivateSubnet1
+    Export:
+      Name: !Sub "${AWS::StackName}-web-pri-subnet-1"
+
+  WebPrivateSubnet2:
+    Description: Web pri Subnet2 ID
+    Value: !Ref WebPrivateSubnet2
+    Export:
+      Name: !Sub "${AWS::StackName}-web-pri-subnet-2"
+
+  WasPrivateSubnet1:
+    Description: Was pri Subnet1 ID
+    Value: !Ref WasPrivateSubnet1
+    Export:
+      Name: !Sub "${AWS::StackName}-was-pri-subnet-1"
+
+  WasPrivateSubnet2:
+    Description: Was pri Subnet2 ID
+    Value: !Ref WasPrivateSubnet2
+    Export:
+      Name: !Sub "${AWS::StackName}-was-pri-subnet-2"
+
+  elbPrivateSubnet1:
+    Description: elb pri Subnet1 ID
+    Value: !Ref elbPrivateSubnet1
+    Export:
+      Name: !Sub "${AWS::StackName}-elb-pri-subnet-1"
+
+  elbPrivateSubnet2:
+    Description: elb pri Subnet1 ID
+    Value: !Ref elbPrivateSubnet2
+    Export:
+      Name: !Sub "${AWS::StackName}-elb-pri-subnet-2"
+
+  DBPrivateSubnet1:
+    Description: elb pri Subnet1 ID
+    Value: !Ref DBPrivateSubnet1
+    Export:
+      Name: !Sub "${AWS::StackName}-db-pri-subnet-1"
+
+  DBPrivateSubnet2:
+    Description: elb pri Subnet1 ID
+    Value: !Ref DBPrivateSubnet2
+    Export:
+      Name: !Sub "${AWS::StackName}-db-pri-subnet-2"
+
+  ## Export SG (BastionSG, WebSG, WasSG, DBSG)
+
+  BastionSG:
+    Description: SecurityGroup of Bastion
+    Value: !Ref BastionSecurityGroup
+    Export:
+      Name: !Sub "${AWS::StackName}-bastion-sg"
+
+  WebSG:
+    Description: SecurityGroup of Web
+    Value: !GetAtt
+      - WebSecurityGroup
+      - GroupId
+    Export:
+      Name: !Sub "${AWS::StackName}-web-sg"
+
+  WasSG:
+    Description: SecurityGroup of Was
+    Value: !GetAtt
+      - WasSecurityGroup
+      - GroupId
+    Export:
+      Name: !Sub "${AWS::StackName}-was-sg"
+
+  DBSG:
+    Description: SecurityGroup of DB
+    Value: !GetAtt
+      - DBSecurityGroup
+      - GroupId
+    Export:
+      Name: !Sub "${AWS::StackName}-db-sg"
+
+  ## Export SubnetGroup - DB, Redis
+
+  DBSubnetGroup:
+    Description: SubnetGroup of DB
+    Value: !Ref DBSubnetGroup
+    Export:
+      Name: !Sub "${AWS::StackName}-db-subnet-group"
+
+  RedisSubnetGroup:
+    Description: SubnetGroup of Redis
+    Value: !Ref RedisSubnetGroup
+    Export:
+      Name: !Sub "${AWS::StackName}-redis-subnet-group"
+
+  ## Export Parameter Group - DB, Redis
+
+  DBParameterGroup:
+    Description: ParameterGroup of DB
+    Value: !Ref DBParameterGroup
+    Export:
+      Name: !Sub "${AWS::StackName}-db-param-group"
+
+  RedisParameterGroup:
+    Description: ParameterGroup of Redis
+    Value: !Ref RedisParameterGroup
+    Export:
+      Name: !Sub "${AWS::StackName}-redis-param-group"
+
+  ## Export DB OptionGroup
+
+  DBOptionGroup:
+    Description: OptionGroup of DB
+    Value: !Ref DBOptionGroup
+    Export:
+      Name: !Sub "${AWS::StackName}-db-option-group"
